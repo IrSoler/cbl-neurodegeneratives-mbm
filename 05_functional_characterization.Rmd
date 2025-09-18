@@ -1,0 +1,177 @@
+---
+title: "Functional characterization by pattern"
+author: "Irene Soler"
+date: "2023-06-19"
+output:
+  rmdformats::material:
+    #code_folding: show
+    self_contained: yes
+    thumbnails: true
+    lightbox: true
+    #highlight: espresso
+    fig_width: 20
+    fig_height: 16
+---
+<style>
+body {
+text-align: justify}
+</style>
+
+```{css, echo = FALSE}
+    #content{
+        max-width:1920px;
+    }
+``` 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, dev.args=list(bg="white"))
+```
+
+```{r packages, echo=FALSE}
+library(ggplot2)
+library(data.table)
+library(UpSetR)
+library(stringr)
+library(plotly)
+library(ggpubr)
+library(ggh4x)
+library(MetBrewer)
+library(tidyverse)
+library(dplyr)
+library(DT)
+library(tidyr)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+library(STRINGdb)
+library(biomaRt)
+```
+
+```{r function}
+count.nd = function(data, columns.nd){
+  
+  data$ND.UP = rowSums(data[,c(columns.nd)]=="UP")
+  data$ND.DOWN = rowSums(data[,c(columns.nd)]=="DOWN")
+  
+  return(data)
+}
+              
+```
+
+
+# 1. Report description
+
+This report compiles the findings obtained by comparing the results of the brain metastatic melanoma analyses of human samples with the results of the meta-analyses in the following neurodegenerative diseases: Alzheimer's disease, Parkinson's disease and multiple sclerosis. In detail:
+
+**Abbreviations used throughout the report:**
+
+- MBM: melanoma brain metastases.
+- NBM: extracraneal brain metastases (non-brain metastases).
+- AD: Alzheimer's disease.
+- CT: cortex.
+- HP: hippocampus.
+- PD: Parkinson's disease.
+- SN: substantia nigra.
+- ST: striatum.
+- MS: multiple sclerosis.
+- BH: Benjamini-Hochberg.
+
+**Examined patterns:**
+
+- UP-UP: genes upregulated in melanoma comparison and upregulated in neurodegenerative disease comparison.
+- UP-DOWN: genes upregulated in melanoma comparison and downregulated in neurodegenerative disease comparison.
+- DOWN-UP: genes downregulated in melanoma comparison and upregulated in neurodegenerative disease comparison.
+- DOWN-DOWN: genes downregulated in melanoma comparison and downregulated in neurodegenerative disease comparison.
+
+```{r read data}
+
+## Read table of results
+df = read.table("TBD", header = TRUE)
+rownames(df) = df$gene
+```
+
+# 2. MBM vs NMB
+
+```{r filtering}
+# Filtering genes
+
+## Filtering by cancer discovery
+df1 = df[!df$MBM.cancer.discov19=="NS",]
+df1 = df1[!df1$MBM.cancer.discov19=="NE",]
+
+## Filtering by cell
+df1 = df1[!df1$MBM.cell22=="NS",]
+df1 = df1[!df1$MBM.cell22=="NE",]
+
+## Filtering by same pattern in both MBM
+df1 = df1[df1$MBM.cancer.discov19==df1$MBM.cell22,]
+df1$MBM.pattern = df1$MBM.cell22
+
+## Count ND patterns
+df1 = count.nd(data = df1, columns.nd = 5:9)
+
+## Remove NS patterns in ND
+df1 = df1[!(df1$ND.UP==0 & df1$ND.DOWN==0),]
+```
+
+```{r patterns}
+# Define patterns
+df1.direct = df1[(df1$MBM.pattern == "DOWN" & df1$ND.UP == 0 & df1$ND.DOWN > 0) | (df1$MBM.pattern == "UP" & df1$ND.UP > 0 & df1$ND.DOWN == 0), "gene"]
+
+df1.indirect = df1[(df1$MBM.pattern == "DOWN" & df1$ND.UP > 0 & df1$ND.DOWN == 0) | (df1$MBM.pattern == "UP" & df1$ND.UP == 0 & df1$ND.DOWN > 0), "gene"]
+
+df1.both = df1[(df1$ND.UP > 0 & df1$ND.DOWN > 0), "gene"]
+```
+
+```{r, results='asis'}
+data.list = list("Direct_patterns" = df1.direct,
+                 "Indirect_patterns" = df1.indirect,
+                 "Both_patterns" = df1.both)
+
+patterns = c("Direct_patterns", "Indirect_patterns", "Both_patterns")
+
+for (pattern in patterns){
+  res <- knitr::knit_child('./05_functional_characterization_child.Rmd', quiet = TRUE)
+  cat(res, sep = '\n')
+}
+```
+
+# 3. MBM vs controls
+
+```{r filtering2}
+# Filtering genes
+## Filtering by Nature
+df2 = df[!df$MBM.nature22=="NS",]
+df2 = df2[!df2$MBM.nature22=="NE",]
+df2$MBM.pattern = df2$MBM.cell22
+
+## Count ND patterns
+df2 = count.nd(data = df2, columns.nd = 5:9)
+
+## Remove NS patterns in ND
+df2 = df2[!(df2$ND.UP==0 & df2$ND.DOWN==0),]
+```
+
+```{r patterns2}
+# Define patterns
+df2.direct = df2[(df2$MBM.pattern == "DOWN" & df2$ND.UP == 0 & df2$ND.DOWN > 0) | (df2$MBM.pattern == "UP" & df2$ND.UP > 0 & df2$ND.DOWN == 0), "gene"]
+
+df2.indirect = df2[(df2$MBM.pattern == "DOWN" & df2$ND.UP > 0 & df2$ND.DOWN == 0) | (df2$MBM.pattern == "UP" & df2$ND.UP == 0 & df2$ND.DOWN > 0), "gene"]
+
+df2.both = df2[(df2$ND.UP > 0 & df2$ND.DOWN > 0), "gene"]
+```
+
+```{r, results='asis'}
+data.list = list("Nature_direct_patterns" = df2.direct,
+                 "Nature_indirect_patterns" = df2.indirect,
+                 "Nature_both_patterns" = df2.both)
+
+patterns = c("Nature_direct_patterns", "Nature_indirect_patterns", "Nature_both_patterns")
+
+for (pattern in patterns){
+  res <- knitr::knit_child('./05_functional_characterization_child.Rmd', quiet = TRUE)
+  cat(res, sep = '\n')
+}
+```
+

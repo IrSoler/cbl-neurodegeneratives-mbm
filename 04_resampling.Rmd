@@ -1,0 +1,484 @@
+---
+title: "Resampling"
+author: "Irene Soler"
+date: "2022-04-05"
+output:
+  rmdformats::material:
+    #code_folding: show
+    self_contained: yes
+    thumbnails: true
+    lightbox: true
+    #highlight: espresso
+    fig_width: 20
+    fig_height: 16
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{css, echo = FALSE}
+    #content{
+        max-width:1920px;
+    }
+``` 
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, dev.args=list(bg="white"))
+```
+
+```{r packages, echo=FALSE}
+library(ggplot2)
+library(data.table)
+library(UpSetR)
+library(stringr)
+library(plotly)
+library(ggpubr)
+library(ggh4x)
+library(MetBrewer)
+library(tidyverse)
+library(dplyr)
+library(DT)
+library(tidyr)
+```
+
+
+```{r function}
+resampling = function(simu, simu_same, genes_nd, size_cell, size_cancer){
+  
+  set.seed(123)
+  
+  for (i in 1:10000){
+
+  int1 = intersect(genes_nd, genes_cell)
+  length(int1)
+  s1 = sample(int1, size = size_cell)
+  #length(s1)
+  
+  int2 = intersect(genes_nd, genes_cancer)
+  length(int2)
+  s2 = sample(int2, size = size_cancer)
+  #length(s2)
+  
+  simu[i] = length(intersect(s1,s2))
+  ss = intersect(s1,s2)
+  
+  if (length(ss) > 1) {
+    ss.cancer = cryo_all_original[ss,"log2FC"] > 0 
+    ss.cell =  cell22_original[ss,"log2FC"] > 0
+    simu_same[i] = sum(ss.cancer == ss.cell)
+  }
+  
+}
+  return(list(simu, simu_same))
+}
+
+patterns = function(df) {
+  df$pattern = ifelse(df$padj < 0.05 & df$log2FC > 0, "UP",
+                      ifelse(df$padj < 0.05 & df$log2FC < 0, "DOWN", "NS"))
+  
+  return(df)
+}
+```
+
+# 1. Report description
+
+This report compiles the findings obtained by comparing the results of the brain metastatic melanoma analyses of human samples with the results of the meta-analyses in the following neurodegenerative diseases: Alzheimer's disease, Parkinson's disease and multiple sclerosis. In detail:
+
+**Abbreviations used throughout the report:**
+
+- MBM: melanoma brain metastases.
+- NBM: extracraneal brain metastases (non-brain metastases).
+- AD: Alzheimer's disease.
+- CT: cortex.
+- HP: hippocampus.
+- PD: Parkinson's disease.
+- SN: substantia nigra.
+- ST: striatum.
+- MS: multiple sclerosis.
+- BH: Benjamini-Hochberg.
+
+**Examined patterns:**
+
+- UP-UP: genes upregulated in melanoma comparison and upregulated in neurodegenerative disease comparison.
+- UP-DOWN: genes upregulated in melanoma comparison and downregulated in neurodegenerative disease comparison.
+- DOWN-UP: genes downregulated in melanoma comparison and upregulated in neurodegenerative disease comparison.
+- DOWN-DOWN: genes downregulated in melanoma comparison and downregulated in neurodegenerative disease comparison.
+
+```{r read total genes}
+
+## Melanoma
+### Cancer Discov 2019
+# Read file
+cryo_all_original = read.delim(file = "TBD", sep = ",", header = TRUE)[,-1]
+
+colnames(cryo_all_original) = c("ENSEMBL", "gene", "log2FC", "logCPM", "LR", "pvalue", "padj")
+rownames(cryo_all_original) = cryo_all_original$gene
+
+cryo_all_original = cryo_all_original[,c("gene", "log2FC", "pvalue", "padj")]
+
+
+### Cell 2022
+# Read file
+cell22_original = read.delim(file = "TBD", sep = ",", header = TRUE)
+
+# Remove date genes
+selection = which(grepl("^[1-9]",cell22_original$gene)==TRUE)
+cell22_original = cell22_original[-selection,]
+
+# Parsing file
+cell22_original = cell22_original[,c("gene", "p_val", "p_val_adj", "avg_log2FC")]
+colnames(cell22_original) = c("gene", "pvalue", "padj", "log2FC")
+rownames(cell22_original) = cell22_original$gene
+
+cell22_original = cell22_original[,c("gene", "log2FC", "pvalue", "padj")]
+
+
+### Nature  
+# Read file
+nature22_original = read.delim(file = "TBD", sep = ",", header = TRUE, quote = "'")
+
+nature22_original = nature22_original[,c("Genes", "pvalue", "padj", "log2FoldChange")]
+colnames(nature22_original) = c("gene", "pvalue", "padj", "log2FC")
+rownames(nature22_original) = nature22_original$gene
+
+nature22_original = nature22_original[,c("gene", "log2FC", "pvalue", "padj")]
+
+## Neurodegenerative disease
+### AD - CT
+
+# Read file
+ct_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+ct_original$gene = rownames(ct_original)
+ct_original = ct_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(ct_original) = c("gene", "log2FC", "pvalue", "padj")
+
+### AD - HP
+# Read file
+hp_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+hp_original$gene = rownames(hp_original)
+hp_original = hp_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(hp_original) = c("gene", "log2FC", "pvalue", "padj")
+
+### PD - SN
+# Read file
+sn_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+sn_original$gene = rownames(sn_original)
+sn_original = sn_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(sn_original) = c("gene", "log2FC", "pvalue", "padj")
+
+
+### PD - ST
+# Read file
+st_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+st_original$gene = rownames(st_original)
+st_original = st_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(st_original) = c("gene", "log2FC", "pvalue", "padj")
+
+### MS
+# Read file
+ms_original = read.delim(file = "TBD", sep = "\t", header = TRUE)[, c(1:5, 12, 15)]
+
+colnames(ms_original) = c("gene", "lower_bound", "log2FC", "upper_bound", "pvalue", "padj", "n_studies")
+rownames(ms_original) = ms_original$gene
+
+ms_original = ms_original[,c("gene", "log2FC", "pvalue", "padj")]
+```
+
+
+
+```{r read intersections}
+
+# Load data (analysis 01)
+ms = read.table(file = "TBD", header = TRUE, sep = "\t")
+ad_ct = read.table(file = "TBD", header = TRUE, sep = "\t")
+ad_hp = read.table(file = "TBD", header = TRUE, sep = "\t")
+pd = read.table(file = "TBD", header = TRUE, sep = "\t")
+
+# Load data (analysis 02)
+ms2 = read.table(file = "TBD", header = TRUE, sep = "\t")
+ad2 = read.table(file = "TBD", header = TRUE, sep = "\t")
+pd2 = read.table(file = "TBD", header = TRUE, sep = "\t")
+
+# Select no sex comparisons
+df = rbind(ms, ad_ct, ad_hp, pd, ms2, ad2, pd2)
+df = df[df$metaanalisis %like% "no_sex",] # Remove data from sex comparisons
+df = df[!(df$metaanalisis == "all_no_sex"),]  # Remove data from all regions metanalyses
+df = df[!(df$melanoma %in% c("cl4l", "cl5b1", "prot_all", "prot_paired", "cryo_paired", "nature22")),] # Remove data from mice and from proteomics
+df$combination.m = paste0(df$neuro, "_", df$metaanalisis)
+df$combination.m = factor(df$combination.m, levels = c("MS_ms_no_sex", "PD_st_no_sex", "PD_sn_no_sex", "AD_hp_no_sex", "AD_ct_no_sex"))
+
+```
+
+```{r genes}
+# Melanoma
+genes_cancer = cryo_all_original$gene
+genes_cell = cell22_original$gene
+
+# Neurodegenerative diseases
+genes_ms = ms_original$gene
+genes_ad_ct = ct_original$gene
+genes_ad_hp = hp_original$gene
+genes_pd_sn = sn_original$gene
+genes_pd_st = st_original$gene
+```
+
+# 2. Resampling results {.tabset .tabset-fade}
+
+
+```{r }
+# Generate a data frame with the combination of the intersection
+df2 = df[!(df$melanoma %in% "nature22"),]
+
+# Convert genes character to list vectors
+df2$genes = apply(df2, 1, function(x) unlist(str_split(x["genes"], pattern = ", ", n = Inf)), simplify = FALSE)
+
+# Generate a variable with all combinations
+df2$combination.m = gsub("_no_sex", "", df2$combination.m)
+df2$combination.m = gsub("_ms", "", df2$combination.m)
+df2$combinations = paste0(df2$melanoma, " ", df2$combination.m, " ", df2$sentido)
+```
+
+```{r }
+
+df.cell = df2[df2$melanoma=="cell22",]
+df.cancer = df2[df2$melanoma=="cryo_all",]
+
+# Create a new data.frame with all combinations to intersect
+df.common = bind_cols(df.cell[1,], df.cancer)
+
+for (i in 2:20){
+  p = bind_cols(df.cell[i,], df.cancer)
+  df.common = rbind(df.common, p)
+}
+
+# Intersect by rows
+df.common$intersect = apply(df.common, 1, function(x) intersect(as.vector(unlist(x[6])), as.vector(unlist(x[14]))))
+
+colnames(df.common) = c("neuro.c", "metaanalisis.c", "melanoma.c", "sentido.c", "Ngenes.c", "genes.c", "combination.m.c", "combinations.c",
+                  "neuro.n", "metaanalisis.n", "melanoma.n", "sentido.n", "Ngenes.n", "genes.n", "combination.m.n", "combinations.n", "intersect")
+
+# Filter
+df.common = df.common[df.common$combination.m.c == df.common$combination.m.n,]
+df.common = df.common[df.common$sentido.c == df.common$sentido.n,]
+
+df.common$Nintersect = apply(df.common, 1, function(x) length((x$intersect)))
+
+```
+
+```{r }
+df.cell = df2[df2$melanoma=="cell22",]
+df.cancer = df2[df2$melanoma=="cryo_all",]
+
+df.cell = df.cell[,c("combination.m", "melanoma", "Ngenes", "genes")]
+df.cancer = df.cancer[,c("combination.m", "melanoma", "Ngenes", "genes")]
+
+# Join genes without considering the direction and by metaanalisis
+df.cell.all = df.cell %>%
+  group_by(combination.m)  %>% 
+  summarise(Nintersect = sum(Ngenes), union = list(genes), melanoma = unique(melanoma))
+
+df.cancer.all = df.cancer %>%
+  group_by(combination.m)  %>% 
+  summarise(Nintersect = sum(Ngenes), union = list(genes), melanoma = unique(melanoma))
+
+# Create a new data.frame with all combinations to intersect
+df.common.all = bind_cols(df.cell.all[1,], df.cancer.all)
+
+for (i in 2:5){
+  p = bind_cols(df.cell.all[i,], df.cancer.all)
+  df.common.all = rbind(df.common.all, p)
+}
+
+colnames(df.common.all) = c("metaanalisis.c", "Nintersect.c", "union.c", "melanoma.c", 
+                            "metaanalisis.n", "Nintersect.n", "union.n", "melanoma.n")
+
+
+# Intersections
+df.common.all$intersect = apply(df.common.all, 1, function(x) intersect(as.vector(unlist(x[3])), as.vector(unlist(x[7]))))
+
+df.common.all$Nintersect = apply(df.common.all, 1, function(x) length((x$intersect)))
+
+# Filter results
+df.common.all = df.common.all[df.common.all$metaanalisis.c == df.common.all$metaanalisis.n,]
+
+```
+
+Shared genes between studies:
+
+- Cell 2022: significant genes in scRNA-seq MBM vs NBM (Cell 2022) and a neurodegenerative disease (MS, AD-CT, AD-HP, PD-SN or PD-ST).
+
+- Cancer Discov 2019: significant genes in RNA-seq MBM vs NBM (Cancer Discov 2019) and a neurodegenerative disease (MS, AD-CT, AD-HP, PD-SN or PD-ST).
+
+- Median simulations: median value of genes that intersect in 10000 random simulations. Each simulation calculates total number of common significant genes in a neurodegenerative disease and the the two melanoma studies selected randomly.
+
+- Total: total number of common significant genes in a neurodegenerative disease and the the two melanoma studies. Of them:
+
+- Median simulations same patterns: median value of common genes that intersect in 10000 random simulations with the same logFC sign in the two melanoma studies.
+
+- Same pattern: from total genes, those with the same pattern in the two melanoma studies.
+  
+- Different pattern: from total genes, those with different pattern in the two melanoma studies.
+
+```{r }
+# Sum results with the same pattern
+common.sum = df.common  %>%
+  group_by(combination.m.n)  %>% 
+  summarise("Nintersect" = sum(Nintersect))
+
+result = merge(common.sum, df.common.all, by.x = "combination.m.n", by.y = "metaanalisis.c")
+result = result[,c("combination.m.n", "Nintersect.c", "Nintersect.n", "Nintersect.y", "Nintersect.x")]
+result[,6] = result[,4] - result[,5]
+colnames(result) = c("Neurodegenerative disease", "Cell 2022", "Cancer Discov 2019", "Total", "Same pattern", "Different pattern")
+rownames(result) = result$`Neurodegenerative disease`
+
+```
+
+```{r }
+simu = rep(0, 10000)
+simu_same = rep(0, 10000)
+
+simu1 = resampling(simu = simu, simu_same = simu_same, genes_nd = genes_ad_ct, size_cell = result["AD_ct", 2], size_cancer = result["AD_ct", 3]) 
+simu_ad_ct = simu1[[1]]
+simu_same_ad_ct = simu1[[2]]
+
+simu1 = resampling(simu = simu, simu_same = simu_same, genes_nd = genes_ad_hp, size_cell = result["AD_hp", 2], size_cancer = result["AD_hp", 3]) 
+simu_ad_hp = simu1[[1]]
+simu_same_ad_hp = simu1[[2]]
+
+simu1 = resampling(simu = simu, simu_same = simu_same, genes_nd = genes_pd_sn, size_cell = result["PD_sn", 2], size_cancer = result["PD_sn", 3]) 
+simu_pd_sn = simu1[[1]]
+simu_same_pd_sn = simu1[[2]]
+
+simu1 = resampling(simu = simu, simu_same = simu_same, genes_nd = genes_pd_st, size_cell = result["PD_st", 2], size_cancer = result["PD_st", 3])
+simu_pd_st = simu1[[1]]
+simu_same_pd_st = simu1[[2]]
+
+simu1 = resampling(simu = simu, simu_same = simu_same, genes_nd = genes_ms, size_cell = result["MS", 2], size_cancer = result["MS", 3]) 
+simu_ms = simu1[[1]]
+simu_same_ms = simu1[[2]]
+
+simus = list(simu_ad_ct, simu_ad_hp, simu_pd_sn, simu_pd_st, simu_ms)
+simus_same = list(simu_same_ad_ct, simu_same_ad_hp, simu_same_pd_sn, simu_same_pd_st, simu_same_ms)
+saveRDS(simus, "TBD")
+saveRDS(simus_same, "TBD")
+
+```
+
+
+```{r }
+medians = round(c(median(simu_ad_ct), median(simu_ad_hp), median(simu_ms), median(simu_pd_sn), median(simu_pd_st)), 2)
+result$`Median simulations` = medians
+result = result[,-1]
+
+medians_same = round(c(median(simu_same_ad_ct), median(simu_same_ad_hp), median(simu_same_ms), median(simu_same_pd_sn), median(simu_same_pd_st)), 2)
+result$`Median simulations same pattern` = medians_same
+
+
+
+DT::datatable(result[,c(1,2,6,3, 7, 4, 5)], rownames = c("Alzheimer's disease - cortex", "Alzheimer's disease - hippocampus", "Multiple sclerosis", "Parkinson's disease - substantia nigra", "Parkinson's disease - striatum")) %>% formatStyle(columns = 0, fontWeight = 'bold', `text-align` = 'left') %>% formatStyle(columns = 1:7, `text-align` = 'center') %>% formatStyle(c(0,2,4), `border-right` = "solid 1px")
+```
+
+
+```{r, results='asis'}
+simus_name = c("AD-CT", "AD-HP", "MS", "PD-SN", "PD-ST")
+i = 1
+
+for (simun in simus_name){
+  res = knitr::knit_child('./resampling_child.Rmd', quiet = TRUE)
+  cat(res, sep = '\n')
+}
+```
+
+# 3. Same pattern gene characterization {.tabset .tabset-fade}
+
+**Gene patterns across studies**
+
+```{r }
+# Establish patterns
+all.genes = unlist(df.common$intersect)
+
+## Melanoma
+cryo_all = patterns(cryo_all_original)
+cell22 = patterns(cell22_original)
+nature22 = patterns(nature22_original)
+
+## Neurodegenerative diseases
+ms = patterns(ms_original)
+ad_ct = patterns(ct_original)
+ad_hp = patterns(hp_original)
+pd_sn = patterns(sn_original)
+pd_st = patterns(st_original)
+```
+
+```{r }
+# Merge results
+df = merge(cryo_all, cell22, by = "gene", all = TRUE)
+df = df[,c("gene", "pattern.x", "pattern.y")]
+colnames(df) = c("gene", "MBM.cancer.discov19", "MBM.cell22")
+
+data = list(nature22, ms, ad_ct, ad_hp, pd_sn, pd_st)
+n.data = c("MBM.nature22", "MS", "AD.CT", "AD.HP", "PD.SN", "PD.ST")
+
+for (i in 1:6) {
+ 
+  p = colnames(df)
+  df = merge(df, data[[i]], by = "gene", all = TRUE)
+  df = df[,c(p, "pattern")]
+  colnames(df) = c(p, n.data[i])
+
+}
+
+df[is.na(df)] = "NE"
+```
+
+```{r }
+c.names = c("Gene ID", "Cancer Discov 2019", " Cell 2022", "Nature 2022", "MS", "AD - CT", "AD - HP", "PD - SN", "PD - ST")
+df[,2] = factor(df[,2])
+df[,3] = factor(df[,3])
+df[,4] = factor(df[,4])
+df[,5] = factor(df[,5])
+df[,6] = factor(df[,6])
+df[,7] = factor(df[,7])
+df[,8] = factor(df[,8])
+df[,9] = factor(df[,9])
+
+df$gene.id = df$gene
+
+df$gene = paste0('<a href="https://www.genecards.org/cgi-bin/carddisp.pl?gene=', df$gene, '">', df$gene, '</a>')
+
+DT::datatable(df[df$gene.id %in% all.genes,-10], rownames= FALSE, filter = 'top', colnames = c.names, escape = FALSE,
+              caption = "Gene patterns by study. Keywords: UP (upregulated), DOWN (downregulated), NS (not significant), NE (not evaluated)",  options = list(columnDefs = list(list(className = 'dt-center', targets = 1:8, width = "12%")))) %>% 
+  formatStyle(2:9, backgroundColor = styleEqual(c("UP", "DOWN", "NS", "NE"), c("#bde0fe", "#cdb4db", "#fffae5", "white")))  %>%
+  formatStyle(1, 
+   backgroundColor = "#f3f3f4")
+  
+```
+
+
+```{r, results='asis'}
+simus_name = c("All genes", "AD-CT", "AD-HP", "MS", "PD-SN", "PD-ST")
+#simus_name = c("All genes", "AD -CT", "AD - HP", "PD - SN")
+genes = list("All genes" = unlist(df.common$intersect),
+             "AD-CT" = unlist(df.common[df.common$combination.m.n == "AD_ct", "intersect"]),
+             "AD-HP" = unlist(df.common[df.common$combination.m.n == "AD_hp", "intersect"]),
+             "MS" = unlist(df.common[df.common$combination.m.n == "MS", "intersect"]),
+             "PD-SN" = unlist(df.common[df.common$combination.m.n == "PD_sn", "intersect"]),
+             "PD-ST" = unlist(df.common[df.common$combination.m.n == "PD_st", "intersect"]))
+string.links = list("All genes" = "https://version-11-5.string-db.org/cgi/network?networkId=bpcvRVtsdmdC",
+                    "AD-CT" = "https://version-11-5.string-db.org/cgi/network?networkId=biuv66hVB66i",
+                    "AD-HP" = "https://version-11-5.string-db.org/cgi/network?networkId=bYGSRB5aCL31",
+                    "PD-SN" = "https://version-11-5.string-db.org/cgi/network?networkId=bhenhyz2cKeR")
+
+for (simun in simus_name){
+  res = knitr::knit_child('./functional_child.Rmd', quiet = TRUE)
+  cat(res, sep = '\n')
+}
+```
+

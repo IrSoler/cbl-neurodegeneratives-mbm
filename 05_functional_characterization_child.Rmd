@@ -1,0 +1,223 @@
+
+```{css, echo = FALSE}
+    #content{
+        max-width:1920px;
+    }
+``` 
+
+## `r namess` {.tabset .tabset-fade}
+
+
+
+```{r}
+genes.nd = genes[[selected.genes]]
+eval_fun = length(genes.nd) > 9
+eval_text = length(genes.nd) < 10
+
+keys = keys(org.Hs.eg.db, keytype="SYMBOL")
+```
+
+**Gene list**: `r paste0(unique(genes.nd), collapse = ", ")`.
+
+
+### Reactome 
+
+```{r, eval=eval_fun}
+httr::set_config(httr::config(ssl_verifypeer = FALSE))
+mart = useMart(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
+
+# Reactome pathways
+r_reac = getBM(attributes=c( 'external_gene_name', 'reactome'), 
+               values = TRUE , mart = mart)
+
+# Remove genes without annotation
+r_reac = r_reac[!(r_reac$reactome == ""),  ]
+r_reac = r_reac[,c(2,1)]
+
+oraTop = enricher(gene        = genes.nd,
+                   pvalueCutoff = 0.05,
+                   pAdjustMethod = "BH",
+                   TERM2GENE = r_reac)
+
+all_reactome = read.table("TBD", header = F, sep = "\t")
+colnames(all_reactome) = c("path", "description", "organism")
+all_reactome = all_reactome[all_reactome$organism == "Homo sapiens",]
+oraTop@result = merge(oraTop@result, all_reactome, by.x = "ID", by.y = "path")
+write.table(oraTop@result, paste0("TBD", simun, ".txt"))
+saveRDS(oraTop, paste0("TBD", simun, ".rds"))
+
+signif_oraTop = oraTop@result[oraTop@result$p.adjust < 0.05, ]
+
+if (nrow(signif_oraTop) > 0) {
+signif_oraTop$url = paste0("<a href='http://reactome.org/content/detail/", signif_oraTop$ID, "'>", signif_oraTop$ID, "</a>")
+for (i in nrow(signif_oraTop)) {
+  convert.genes = strsplit(signif_oraTop[i,"geneID"], split = "/")[[1]]
+  convert.genes = names(p[p %in% convert.genes])
+  signif_oraTop[i,"geneID"] = paste0(convert.genes, collapse = "/")
+}
+} else {
+  signif_oraTop$url = character()
+}
+
+DT::datatable(signif_oraTop[,c("url", "description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "geneID")], escape=FALSE, filter = 'top', rownames = FALSE) %>% formatStyle(columns = 0:5, `text-align` = 'center') %>%
+  formatRound(columns=c('pvalue', 'p.adjust'), digits=5)
+```
+
+
+### KEGG pathways  {.tabset .tabset-fade}
+
+`r if(eval_text){"Not enough genes to perform functional analysis"}`
+
+```{r, eval=eval_fun}
+r_kegg = AnnotationDbi::select(org.Hs.eg.db, keys=keys,
+                                        columns=c("PATH", "SYMBOL"), 
+                                        keytype="SYMBOL")
+
+# Remove genes without annotation
+r_kegg = na.exclude(r_kegg) 
+
+
+table(duplicated(r_kegg)) 
+head(r_kegg)
+
+r_kegg = r_kegg[,c(2,1)]
+
+oraTop = enricher(gene        = genes.nd,
+                   pvalueCutoff = 0.05,
+                   pAdjustMethod = "BH",
+                   TERM2GENE = r_kegg)
+
+write.table(oraTop@result, paste0("TBD", simun, ".txt"))
+saveRDS(oraTop, paste0("TBD", simun, ".rds"))
+
+signif_oraTop = oraTop@result[oraTop@result$p.adjust < 0.05, ]
+
+if (nrow(signif_oraTop) > 0) {
+signif_oraTop$url = paste0("<a href='https://www.genome.jp/entry/", signif_oraTop$ID, "'>", signif_oraTop$ID, "</a>")
+for (i in nrow(signif_oraTop)) {
+  convert.genes = strsplit(signif_oraTop[i,"geneID"], split = "/")[[1]]
+  convert.genes = names(p[p %in% convert.genes])
+  signif_oraTop[i,"geneID"] = paste0(convert.genes, collapse = "/")
+}
+} else {
+  signif_oraTop$url = character()
+}
+
+
+DT::datatable(signif_oraTop[,c("url", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "geneID")], escape=FALSE, filter = 'top', rownames = FALSE) %>% formatStyle(columns = 0:5, `text-align` = 'center') %>%
+  formatRound(columns=c('pvalue', 'p.adjust'), digits=5)
+
+```
+
+
+
+
+
+### Biological processes {.tabset .tabset-fade}
+
+`r if(eval_text){"Not enough genes to perform functional analysis"}`
+
+```{r, eval = eval_fun}
+oraTop = enrichGO(gene        = genes.nd,
+                   OrgDb         = org.Hs.eg.db,
+                   keyType       = 'SYMBOL',
+                   ont           = "BP",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff  = 0.05)
+
+write.table(oraTop@result, paste0("TBD", simun, ".txt"))
+saveRDS(oraTop, paste0("TBD", simun, ".rds"))
+
+
+
+signif_oraTop = oraTop@result[oraTop@result$p.adjust < 0.05, ]
+if (nrow(signif_oraTop) > 0) {
+  signif_oraTop$url = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", signif_oraTop$ID, "'>", signif_oraTop$ID, "</a>")
+} else {
+  signif_oraTop$url = character()
+}
+
+
+DT::datatable(signif_oraTop[,c("url", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "geneID")], escape=FALSE, filter = 'top', rownames = FALSE) %>% formatStyle(columns = 0:5, `text-align` = 'center') %>%
+    formatRound(columns=c('pvalue', 'p.adjust'), digits=5)
+```
+
+### Molecular function {.tabset .tabset-fade}
+
+`r if(eval_text){"Not enough genes to perform functional analysis"}`
+
+
+```{r, eval = eval_fun}
+oraTop = enrichGO(gene        = genes.nd,
+                   OrgDb         = org.Hs.eg.db,
+                   keyType       = 'SYMBOL',
+                   ont           = "MF",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff  = 0.05)
+
+write.table(oraTop@result, paste0("TBD", simun, ".txt"))
+saveRDS(oraTop, paste0("TBD", simun, ".rds"))
+
+
+signif_oraTop = oraTop@result[oraTop@result$p.adjust < 0.05, ]
+if (nrow(signif_oraTop) > 0) {
+  signif_oraTop$url = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", signif_oraTop$ID, "'>", signif_oraTop$ID, "</a>")
+} else {
+  signif_oraTop$url = character()
+}
+
+DT::datatable(signif_oraTop[,c("url", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "geneID")], escape=FALSE, filter = 'top', rownames = FALSE) %>% formatStyle(columns = 0:5, `text-align` = 'center') %>%
+    formatRound(columns=c('pvalue', 'p.adjust'), digits=5)
+```
+
+### Celular component {.tabset .tabset-fade}
+
+`r if(eval_text){"Not enough genes to perform functional analysis"}`
+
+```{r, eval = eval_fun}
+oraTop = enrichGO(gene        = genes.nd,
+                   OrgDb         = org.Hs.eg.db,
+                   keyType       = 'SYMBOL',
+                   ont           = "CC",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff  = 0.05)
+
+write.table(oraTop@result, paste0("TBD", simun, ".txt"))
+saveRDS(oraTop, paste0("TBD", simun, ".rds"))
+
+
+signif_oraTop = oraTop@result[oraTop@result$p.adjust < 0.05, ]
+if (nrow(signif_oraTop) > 0) {
+  signif_oraTop$url = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", signif_oraTop$ID, "'>", signif_oraTop$ID, "</a>")
+} else {
+  signif_oraTop$url = character()
+}
+
+DT::datatable(signif_oraTop[,c("url", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "geneID")], escape=FALSE, filter = 'top', rownames = FALSE) %>% formatStyle(columns = 0:5, `text-align` = 'center') %>%
+    formatRound(columns=c('pvalue', 'p.adjust'), digits=5)
+```
+
+### Protein - protein interactions {.tabset .tabset-fade}
+
+`r if(eval_text){"Not enough genes to perform functional analysis"}`
+
+`r if(eval_fun){paste0("Click [here](", string.links[[simun]], ") for more details")}`
+
+
+
+```{r, eval = eval_fun}
+df = data.frame(c("gene" = genes.nd))
+colnames(df) = "gene"
+
+string_db = STRINGdb$new(version="11.5", species=9606,
+                         score_threshold=400)
+
+example1_mapped = string_db$map(df, "gene", removeUnmappedRows = TRUE)
+string_db$plot_network(example1_mapped)
+
+path = "TBD"
+
+knitr::include_graphics(paste0(path, simun, ".png"))
+knitr::include_graphics(paste0(path, simun, "_stats.png"))
+```
+
