@@ -1,1 +1,1 @@
-TBD
+Welcome to the repository for the study titled **Unveiling Common Transcriptomic Features between Melanoma Brain Metastases and Neurodegenerative Diseases.** This repository contains the step-by-step scripts developed for the bioinformatic analyses.
