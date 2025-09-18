@@ -1,0 +1,202 @@
+---
+title: "Common molecular mechanisms between melanoma and neurodegenerative diseases"
+author: "Irene Soler"
+date: "01/10/2022"
+output:
+  rmdformats::material:
+    #code_folding: show
+    self_contained: yes
+    thumbnails: true
+    lightbox: true
+    #highlight: espresso
+    fig_width: 7
+    fig_height: 5
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE)
+```
+
+```{r }
+# Functions
+library(DT)
+library(dplyr)
+
+# Local functions
+
+patterns = function(df) {
+  df$pattern = ifelse(df$padj < 0.05 & df$log2FC > 0, "UP",
+                      ifelse(df$padj < 0.05 & df$log2FC < 0, "DOWN", "NS"))
+  
+  return(df)
+}
+```
+
+# 1. Gene profile throughout studies
+
+```{r }
+# Load data
+
+## Melanoma
+
+### Cancer Discov 2019
+
+# Read file
+cryo_all_original = read.delim(file = "TBD", sep = ",", header = TRUE)[,-1]
+
+colnames(cryo_all_original) = c("ENSEMBL", "gene", "log2FC", "logCPM", "LR", "pvalue", "padj")
+rownames(cryo_all_original) = cryo_all_original$gene
+
+cryo_all_original = cryo_all_original[,c("gene", "log2FC", "pvalue", "padj")]
+
+
+### Cell 2022
+
+# Read file
+cell22_original = read.delim(file = "TBD", sep = ",", header = TRUE)
+
+# Remove date genes
+selection = which(grepl("^[1-9]",cell22_original$gene)==TRUE)
+cell22_original = cell22_original[-selection,]
+
+# Parsing file
+cell22_original = cell22_original[,c("gene", "p_val", "p_val_adj", "avg_log2FC")]
+colnames(cell22_original) = c("gene", "pvalue", "padj", "log2FC")
+rownames(cell22_original) = cell22_original$gene
+
+cell22_original = cell22_original[,c("gene", "log2FC", "pvalue", "padj")]
+
+
+### Nature 2022
+
+# Read file
+nature22_original = read.delim(file = "TBD", sep = ",", header = TRUE, quote = "'")
+
+nature22_original = nature22_original[,c("Genes", "pvalue", "padj", "log2FoldChange")]
+colnames(nature22_original) = c("gene", "pvalue", "padj", "log2FC")
+rownames(nature22_original) = nature22_original$gene
+
+nature22_original = nature22_original[,c("gene", "log2FC", "pvalue", "padj")]
+```
+
+```{r }
+## Neurodegenerative disease
+
+### AD - CT
+# Read file
+ct_no_sex_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+ct_no_sex_original$gene = rownames(ct_no_sex_original)
+ct_no_sex_original = ct_no_sex_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(ct_no_sex_original) = c("gene", "log2FC", "pvalue", "padj")
+
+### AD - HP
+
+# Read file
+hp_no_sex_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+hp_no_sex_original$gene = rownames(hp_no_sex_original)
+hp_no_sex_original = hp_no_sex_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(hp_no_sex_original) = c("gene", "log2FC", "pvalue", "padj")
+
+
+### PD - SN
+
+# Read file
+sn_no_sex_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+sn_no_sex_original$gene = rownames(sn_no_sex_original)
+sn_no_sex_original = sn_no_sex_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(sn_no_sex_original) = c("gene", "log2FC", "pvalue", "padj")
+
+# Any NA p.adjusted value
+
+
+### PD - ST
+
+# Read file
+st_no_sex_original = read.delim(file = "TBD", sep = "\t", header = TRUE)
+st_no_sex_original$gene = rownames(st_no_sex_original)
+st_no_sex_original = st_no_sex_original[,c("gene", "logFC", "pvalue", "p.adjust.fdr")]
+
+colnames(st_no_sex_original) = c("gene", "log2FC", "pvalue", "padj")
+
+# Any NA p.adjusted value
+
+### MS
+
+# Read file
+ms_no_sex_original = read.delim(file = "TBD", sep = "\t", header = TRUE)[, c(1:5, 12, 15)]
+
+colnames(ms_no_sex_original) = c("gene", "lower_bound", "log2FC", "upper_bound", "pvalue", "padj", "n_studies")
+rownames(ms_no_sex_original) = ms_no_sex_original$gene
+
+# Any NA p.adjusted value
+ms_no_sex_original = ms_no_sex_original[,c("gene", "log2FC", "pvalue", "padj")]
+```
+
+```{r }
+# Establish patterns
+
+## Melanoma
+cryo_all = patterns(cryo_all_original)
+cell22 = patterns(cell22_original)
+nature22 = patterns(nature22_original)
+
+## Neurodegenerative diseases
+ms = patterns(ms_no_sex_original)
+ad_ct = patterns(ct_no_sex_original)
+ad_hp = patterns(hp_no_sex_original)
+pd_sn = patterns(sn_no_sex_original)
+pd_st = patterns(st_no_sex_original)
+```
+
+```{r }
+# Merge results
+df = merge(cryo_all, cell22, by = "gene", all = TRUE)
+df = df[,c("gene", "pattern.x", "pattern.y")]
+colnames(df) = c("gene", "MBM.cancer.discov19", "MBM.cell22")
+
+data = list(nature22, ms, ad_ct, ad_hp, pd_sn, pd_st)
+n.data = c("MBM.nature22", "MS", "AD.CT", "AD.HP", "PD.SN", "PD.ST")
+
+for (i in 1:6) {
+ 
+  p = colnames(df)
+  df = merge(df, data[[i]], by = "gene", all = TRUE)
+  df = df[,c(p, "pattern")]
+  colnames(df) = c(p, n.data[i])
+
+}
+
+df[is.na(df)] = "NE"
+```
+
+```{r }
+c.names = c("Gene ID", "Cancer Discov 2019", " Cell 2022", "Nature 2022", "MS", "AD - CT", "AD - HP", "PD - SN", "PD - ST")
+df[,2] = factor(df[,2])
+df[,3] = factor(df[,3])
+df[,4] = factor(df[,4])
+df[,5] = factor(df[,5])
+df[,6] = factor(df[,6])
+df[,7] = factor(df[,7])
+df[,8] = factor(df[,8])
+df[,9] = factor(df[,9])
+
+df$gene.id = df$gene
+
+df$gene = paste0('<a href="https://www.genecards.org/cgi-bin/carddisp.pl?gene=', df$gene, '">', df$gene, '</a>')
+
+DT::datatable(df[,-10], rownames= FALSE, filter = 'top', colnames = c.names, escape = FALSE,
+              caption = "Gene patterns by study. Keywords: UP (upregulated), DOWN (downregulated), NS (not significant), NE (not evaluated)",  options = list(columnDefs = list(list(className = 'dt-center', targets = 1:8, width = "12%")))) %>% 
+  formatStyle(2:9, backgroundColor = styleEqual(c("UP", "DOWN", "NS", "NE"), c("#bde0fe", "#cdb4db", "#fffae5", "white")))  %>%
+  formatStyle(1, 
+   backgroundColor = "#f3f3f4")
+  
+```
+
